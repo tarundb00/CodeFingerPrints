@@ -51,6 +51,7 @@ class ASTCodeAnalyzer:
                 classes.append({
                     "name": node.name,
                     "lineno": node.lineno,
+                    "end_lineno": node.end_lineno,
                     "methods": methods
                 })
 

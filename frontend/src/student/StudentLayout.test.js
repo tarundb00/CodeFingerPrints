@@ -6,6 +6,7 @@ import { fetchStudentByUsn } from '../services/api';
 
 jest.mock('../services/api', () => ({
   fetchStudentByUsn: jest.fn(),
+  getNotifications: () => Promise.resolve([]),
 }));
 
 describe('StudentLayout', () => {

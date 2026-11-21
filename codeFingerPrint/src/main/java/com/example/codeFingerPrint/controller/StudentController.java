@@ -1,5 +1,6 @@
 package com.example.codeFingerPrint.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import com.example.codeFingerPrint.dtos.response.MessageResponse;
 import com.example.codeFingerPrint.entity.*;
 import com.example.codeFingerPrint.repository.*;
@@ -13,7 +14,7 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/students")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = {"http://localhost:3000", "http://127.0.0.1:3000", "${app.frontend.origin:http://localhost:3000}"}, allowCredentials = "true")
 public class StudentController {
 
   private final StudentRepository studentRepository;
@@ -72,7 +73,7 @@ public class StudentController {
    * No JWT needed for students; returns student record.
    */
   @PostMapping("/login")
-  public ResponseEntity<?> studentLogin(@RequestBody Map<String, String> body) {
+  public ResponseEntity<?> studentLogin(@RequestBody Map<String, String> body, HttpServletRequest request) {
     String usn = body.getOrDefault("usn", "").toUpperCase().trim();
     String email = body.getOrDefault("email", "").trim().toLowerCase();
 
@@ -92,7 +93,16 @@ public class StudentController {
       student = studentRepository.save(student);
     }
 
+    if (request.getSession(false) != null) request.changeSessionId();
+    request.getSession(true).setAttribute("reportStudentUsn", student.getUsn());
     return ResponseEntity.ok(student);
+  }
+
+  @PostMapping("/logout")
+  public ResponseEntity<Void> logout(HttpServletRequest request) {
+    var session = request.getSession(false);
+    if (session != null) session.invalidate();
+    return ResponseEntity.noContent().build();
   }
 
   /**

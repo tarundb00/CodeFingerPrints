@@ -1,5 +1,6 @@
 package com.example.codeFingerPrint.services;
 
+import java.time.ZoneOffset;
 import com.example.codeFingerPrint.entity.ContributionScore;
 import com.example.codeFingerPrint.entity.Project;
 import com.example.codeFingerPrint.repository.ContributionRepository;
@@ -43,12 +44,20 @@ public class NotificationScheduler {
   @Scheduled(cron = "0 0 8 * * *")
   public void checkInactiveStudents() {
     List<ContributionScore> scores = contributionRepository.findAll();
-    LocalDateTime now = LocalDateTime.now();
+    LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
 
     for (ContributionScore cs : scores) {
-      long daysSinceCommit = cs.getLastCommitDate() != null
-          ? ChronoUnit.DAYS.between(cs.getLastCommitDate(), now)
+      LocalDateTime lastActivity = cs.getLastActivityDate() != null ? cs.getLastActivityDate() : cs.getLastCommitDate();
+      long daysSinceActivity = lastActivity != null
+          ? ChronoUnit.DAYS.between(lastActivity.toLocalDate(), now.toLocalDate())
           : 999;
+
+      String status = lastActivity == null ? "NOT_CONTRIBUTING"
+          : daysSinceActivity > 14 ? "INACTIVE" : daysSinceActivity > 7 ? "AT_RISK" : "ACTIVE";
+      if (!status.equals(cs.getStatus())) {
+        cs.setStatus(status);
+        contributionRepository.save(cs);
+      }
 
       Project project = projectRepository.findById(cs.getProjectId()).orElse(null);
       String projectName = project != null ? project.getName() : "Unknown Project";
@@ -64,18 +73,18 @@ public class NotificationScheduler {
       }
 
       if (cs.getStudentEmail() == null || cs.getStudentEmail().isBlank()) {
-        if (daysSinceCommit < 7) continue;
+        if (daysSinceActivity < 7) continue;
       }
 
       // 7+ days → alert student
-      if (daysSinceCommit >= 7 && daysSinceCommit < 14) {
+      if (daysSinceActivity >= 7 && daysSinceActivity < 14) {
         notificationService.notify(cs.getStudentUsn(), "INACTIVE_STUDENT", "Contribution reminder",
-            "You have not committed to " + projectName + " in " + daysSinceCommit + " days.");
+            "No GitHub activity was recorded for " + projectName + " in " + daysSinceActivity + " days.");
         if (cs.getStudentEmail() != null && !cs.getStudentEmail().isBlank()) emailService.send(
           cs.getStudentEmail(),
             "⚠️ Contribution Alert — " + projectName,
             "Dear " + cs.getStudentName() + ",\n\n"
-                + "You have not made any commits in the last " + daysSinceCommit + " days on project: " + projectName + ".\n"
+                + "No GitHub activity was recorded in the last " + daysSinceActivity + " days on project: " + projectName + ".\n"
                 + "Project deadline: " + deadline + "\n\n"
                 + "Please contribute to your team's repository to avoid being marked inactive.\n\n"
                 + "— CodeFingerPrint System"
@@ -83,15 +92,15 @@ public class NotificationScheduler {
       }
 
       // 14+ days → alert teacher
-      if (daysSinceCommit >= 14 && daysSinceCommit < 21) {
+      if (daysSinceActivity >= 14 && daysSinceActivity < 21) {
         notificationService.notify("TEACHER", "INACTIVE_STUDENT", "Student needs attention",
-            cs.getStudentName() + " has not contributed to " + projectName + " in " + daysSinceCommit + " days.");
+            cs.getStudentName() + " has not contributed to " + projectName + " in " + daysSinceActivity + " days.");
         if (teacherEmail != null && !teacherEmail.isBlank()) emailService.send(
           teacherEmail,
             "🚨 Student Inactive — " + cs.getStudentName(),
             "Dear Teacher,\n\n"
                 + "Student " + cs.getStudentName() + " (USN: " + cs.getStudentUsn() + ") "
-                + "has not contributed in " + daysSinceCommit + " days on project: " + projectName + ".\n"
+                + "has not contributed in " + daysSinceActivity + " days on project: " + projectName + ".\n"
                 + "Project deadline: " + deadline + "\n\n"
                 + "Please follow up with this student.\n\n"
                 + "— CodeFingerPrint System"
@@ -99,15 +108,15 @@ public class NotificationScheduler {
       }
 
       // 21+ days → alert HOD
-      if (daysSinceCommit >= 21) {
+      if (daysSinceActivity >= 21) {
         notificationService.notify("HOD", "INACTIVE_STUDENT", "Critical contribution alert",
-            cs.getStudentName() + " has made no contribution to " + projectName + " in " + daysSinceCommit + " days.");
+            cs.getStudentName() + " has made no contribution to " + projectName + " in " + daysSinceActivity + " days.");
         if (hodEmail != null && !hodEmail.isBlank()) emailService.send(
           hodEmail,
             "🔴 Critical: Student Not Contributing — " + cs.getStudentName(),
             "Dear HOD,\n\n"
                 + "CRITICAL ALERT: Student " + cs.getStudentName() + " (USN: " + cs.getStudentUsn() + ") "
-                + "has made ZERO contributions in " + daysSinceCommit + " days on project: " + projectName + ".\n"
+                + "has made ZERO contributions in " + daysSinceActivity + " days on project: " + projectName + ".\n"
                 + "Project deadline: " + deadline + "\n"
                 + "Current score: " + cs.getScore() + "/100\n\n"
                 + "Immediate action required.\n\n"

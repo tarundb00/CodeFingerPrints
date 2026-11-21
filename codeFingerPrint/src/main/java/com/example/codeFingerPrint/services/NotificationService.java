@@ -1,5 +1,7 @@
 package com.example.codeFingerPrint.services;
 
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionSynchronization;
 import com.example.codeFingerPrint.entity.Notification;
 import com.example.codeFingerPrint.repository.NotificationRepository;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -34,8 +36,18 @@ public class NotificationService {
     payload.put("message", saved.getMessage());
     payload.put("recipientKey", saved.getRecipientKey());
     payload.put("createdAt", saved.getCreatedAt());
-    messagingTemplate.convertAndSend((String) ("/topic/notifications/" + recipientKey), (Object) payload);
-    messagingTemplate.convertAndSend((String) "/topic/notifications", (Object) payload);
+    Runnable broadcast = () -> {
+      messagingTemplate.convertAndSend("/topic/notifications/" + recipientKey, (Object) payload);
+      messagingTemplate.convertAndSend("/topic/notifications", (Object) payload);
+    };
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override public void afterCommit() { broadcast.run(); }
+          });
+    } else {
+      broadcast.run();
+    }
     return saved;
   }
 }

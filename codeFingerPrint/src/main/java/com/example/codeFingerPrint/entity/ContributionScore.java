@@ -1,8 +1,11 @@
 package com.example.codeFingerPrint.entity;
 
+import org.hibernate.annotations.DynamicUpdate;
+import java.time.ZoneOffset;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
+@DynamicUpdate
 @Entity
 @Table(name = "contribution_scores", indexes = {
   @Index(name = "idx_contribution_project", columnList = "projectId"),
@@ -33,6 +36,20 @@ public class ContributionScore {
 
   // Calculated score (0-100)
   private Double score;
+  private Double codeShare;
+  private LocalDateTime lastActivityDate;
+  private String recentActivity;
+
+  public LocalDateTime getLastActivityDate() { return lastActivityDate; }
+  public void setLastActivityDate(LocalDateTime date) { lastActivityDate = date; }
+  public String getRecentActivity() { return recentActivity; }
+  public void setRecentActivity(String value) { recentActivity = value; }
+  private String scoreBreakdown;
+
+  public Double getCodeShare() { return codeShare; }
+  public void setCodeShare(Double value) { codeShare = value; }
+  public String getScoreBreakdown() { return scoreBreakdown; }
+  public void setScoreBreakdown(String value) { scoreBreakdown = value; }
 
   // Teacher-entered assessment marks
   private Integer presentationScore;
@@ -51,9 +68,8 @@ public class ContributionScore {
   private LocalDateTime lastAnalyzedAt;
 
   @PrePersist
-  @PreUpdate
-  public void onUpdate() {
-    lastAnalyzedAt = LocalDateTime.now();
+  public void onCreate() {
+    if (lastAnalyzedAt == null) lastAnalyzedAt = LocalDateTime.now(ZoneOffset.UTC);
   }
 
   public Long getId() { return id; }
@@ -121,5 +137,6 @@ public class ContributionScore {
   public LocalDateTime getLastCommitDate() { return lastCommitDate; }
   public void setLastCommitDate(LocalDateTime lastCommitDate) { this.lastCommitDate = lastCommitDate; }
 
+  public void setLastAnalyzedAt(LocalDateTime date) { lastAnalyzedAt = date; }
   public LocalDateTime getLastAnalyzedAt() { return lastAnalyzedAt; }
 }

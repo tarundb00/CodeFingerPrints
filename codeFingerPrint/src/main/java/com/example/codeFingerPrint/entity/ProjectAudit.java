@@ -17,6 +17,12 @@ public class ProjectAudit {
   private Long projectId;
   private String action;
   private String actor;
+  private Integer pullRequestNumber;
+  private String repositoryName;
+  public Integer getPullRequestNumber() { return pullRequestNumber; }
+  public void setPullRequestNumber(Integer number) { pullRequestNumber = number; }
+  public String getRepositoryName() { return repositoryName; }
+  public void setRepositoryName(String name) { repositoryName = name; }
   private Integer contributorCount;
   private Double averageScore;
   private LocalDateTime createdAt;

@@ -11,6 +11,7 @@ import {
 import { BsBarChartFill } from 'react-icons/bs';
 import { MdGrade, MdOutlineAnalytics } from 'react-icons/md';
 import { fetchProjects, fetchTeams, fetchContributions, fetchInactiveStudents } from '../services/api';
+import useAnalysisUpdates from '../components/useAnalysisUpdates';
 import './TeacherDashboard.css';
 
 const statusConfig = {
@@ -28,45 +29,6 @@ const contributionStatus = {
   NOT_CONTRIBUTING: { label: 'Not Contributing',color: '#95a5a6', bg: 'rgba(149,165,166,0.12)' },
   UNKNOWN:          { label: 'No Data',         color: '#888',    bg: 'rgba(136,136,136,0.12)' },
 };
-
-function TeacherScoreBreakdown({ contribution }) {
-  if (!contribution) return null;
-
-  // UNIFIED ABSOLUTE SCORING — matches Python WeightedContributionScorer
-  const commits    = contribution.totalCommits || 0;
-  const additions  = contribution.linesAdded || 0;
-  const activeDays = contribution.activeDays || 0;
-  const bugFixes   = contribution.issuesClosed || 0;
-  const estFunctions = Math.max(0, Math.round(additions / 30));
-
-  const commitScore      = Math.min(30, Math.min(1, commits / 5) * 30);
-  const linesScore       = Math.min(20, Math.min(1, additions / 500) * 20);
-  const consistencyScore = Math.min(20, Math.min(1, activeDays / 3) * 20);
-  const qualityScore     = Math.min(15, Math.min(1, estFunctions / 5) * 15);
-  const bugScore         = Math.min(15, Math.min(1, bugFixes / 1) * 15);
-
-  const factors = [
-    { label: 'Commits',      value: commitScore.toFixed(1),      max: 30 },
-    { label: 'Lines Added',  value: linesScore.toFixed(1),       max: 20 },
-    { label: 'Consistency',  value: consistencyScore.toFixed(1), max: 20 },
-    { label: 'Code Quality', value: qualityScore.toFixed(1),     max: 15 },
-    { label: 'Bug Fixes',    value: bugScore.toFixed(1),         max: 15 },
-  ];
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginTop: 8 }}>
-      {factors.map((f) => (
-        <div key={f.label} style={{ padding: 8, borderRadius: 6, background: '#f5f8fc', border: '1px solid #dde3f0' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#1d2433', marginBottom: 4 }}>{f.label}</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: '#6675ff', marginBottom: 4 }}>{f.value}<span style={{ fontSize: 11, color: '#888' }}>/{f.max}</span></div>
-          <div style={{ height: 4, background: '#dde3f0', borderRadius: 2, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${Math.min(100, (parseFloat(f.value) / f.max) * 100)}%`, background: '#6675ff', transition: 'width 0.3s' }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function TeacherDashboard() {
   const navigate = useNavigate();
@@ -123,6 +85,8 @@ export default function TeacherDashboard() {
       });
     }
   }, [proj?.id, projects, activeProject]);
+
+  useAnalysisUpdates(proj?.id, () => loadProjectContributions(proj.id));
 
   const loadProjectContributions = async (projectId) => {
     setContribLoading(true);
@@ -332,10 +296,7 @@ export default function TeacherDashboard() {
                         const rawScore = entry.score || 0;
                         const commits = entry.totalCommits || 0;
                         const adds = entry.linesAdded || 0;
-                        const computedScore = rawScore > 0 ? rawScore : (commits > 0 ? Math.min(100, Math.round(50 + commits * 15 + adds * 0.05)) : 0);
-                        const effectiveStatus = (commits > 0 || computedScore > 0)
-                          ? contributionStatus.ACTIVE
-                          : (contributionStatus[entry.status] || contributionStatus.NOT_CONTRIBUTING);
+                        const effectiveStatus = contributionStatus[entry.status] || contributionStatus.NOT_CONTRIBUTING;
 
                         return (
                           <div className="td-contrib-row" key={i}>
@@ -346,7 +307,7 @@ export default function TeacherDashboard() {
                               <div className="td-contrib-top">
                                 <span className="td-contrib-name">{entry.studentName || entry.studentUsn}</span>
                                 <span className="td-contrib-role">{entry.studentUsn}</span>
-                                <span className="td-contrib-commits">{Math.round(computedScore)}%</span>
+                                <span className="td-contrib-commits">{Math.round(rawScore)}%</span>
                               </div>
                               <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
                                 {commits} commit{commits !== 1 ? 's' : ''} · {adds} + · {entry.linesDeleted || 0} -

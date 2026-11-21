@@ -34,7 +34,7 @@ class GitHubWorkflowControllerTest {
 
   @Test
   void repositoryPathUsesProjectsSavedGithubOwner() {
-    GitHubWorkflowController controller = new GitHubWorkflowController(null, null, null, null, null);
+    GitHubWorkflowController controller = new GitHubWorkflowController(null, null, null, null, null, null);
     GitHubConfig config = new GitHubConfig();
     config.setPersonalAccessToken("token");
     Project project = new Project();

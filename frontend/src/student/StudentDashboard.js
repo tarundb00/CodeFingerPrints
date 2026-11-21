@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ScoreBreakdown from '../components/ScoreBreakdown';
+import useAnalysisUpdates from '../components/useAnalysisUpdates';
 import StudentLayout from './StudentLayout';
 import {
   FaFire, FaProjectDiagram, FaUsers, FaChartBar,
@@ -7,9 +9,9 @@ import {
   FaExclamationTriangle, FaArrowRight, FaBell, FaCodeBranch,
   FaFolder, FaChartPie, FaBullseye, FaUserTie,
   FaAward, FaCommentDots, FaRocket, FaTasks, FaUserCheck,
-  FaBug, FaLock,
+  FaLock,
 } from 'react-icons/fa';
-import { fetchStudentDashboard, getMyBranch, getBranchDetail, getBranchCommits } from '../services/api';
+import { fetchStudentDashboard, getMyBranch, getBranchDetail } from '../services/api';
 
 const statusCfg = {
   active: { label: 'Active', color: '#2ecc71', bg: 'rgba(46,204,113,0.12)' },
@@ -58,72 +60,17 @@ function ScoreRing({ score, max = 100, label = '/ 100', size = 110, displayValue
   );
 }
 
-function ScoreBreakdown({ contribution }) {
-  if (!contribution) return null;
-
-  // UNIFIED ABSOLUTE SCORING — matches Python WeightedContributionScorer
-  // 5 components against semester targets, weighted sum = 100 pts max
-  const commits   = Number(contribution.totalCommits || 0);
-  const additions = Number(contribution.linesAdded || 0);
-  const activeDays = Number(contribution.activeDays || 0);
-  const bugFixes  = Number(contribution.issuesClosed || 0);
-  const estFunctions = Math.max(0, Math.round(additions / 30));
-
-  const commitScore      = Math.min(30, Math.min(1, commits / 5) * 30);
-  const linesScore       = Math.min(20, Math.min(1, additions / 500) * 20);
-  const consistencyScore = Math.min(20, Math.min(1, activeDays / 3) * 20);
-  const qualityScore     = Math.min(15, Math.min(1, estFunctions / 5) * 15);
-  const bugScore         = Math.min(15, Math.min(1, bugFixes / 1) * 15);
-
-  const factors = [
-    { label: 'Commits',     icon: <FaCodeBranch />, value: commitScore.toFixed(1),      max: 30, actual: commits,       unit: 'commits' },
-    { label: 'Lines Added', icon: <FaFire />,        value: linesScore.toFixed(1),       max: 20, actual: additions,     unit: 'lines' },
-    { label: 'Consistency', icon: <FaClock />,       value: consistencyScore.toFixed(1), max: 20, actual: activeDays,   unit: 'active days' },
-    { label: 'Code Quality',icon: <FaCheckCircle />, value: qualityScore.toFixed(1),     max: 15, actual: estFunctions, unit: 'functions est.' },
-    { label: 'Bug Fixes',   icon: <FaBug />,         value: bugScore.toFixed(1),         max: 15, actual: bugFixes,     unit: 'issues closed' },
-  ];
-
-  return (
-    <div className="s-score-breakdown">
-      <h4 style={{ marginBottom: 12, fontSize: 13, fontWeight: 600, color: '#1d2433' }}>Score Breakdown</h4>
-      <div className="s-breakdown-grid">
-        {factors.map((f) => (
-          <div className="s-breakdown-factor" key={f.label}>
-            <div className="s-factor-header">
-              <span className="s-factor-icon" style={{ color: '#6675ff' }}>{f.icon}</span>
-              <span className="s-factor-label">{f.label}</span>
-              <span className="s-factor-value">{f.value}/<span style={{ fontSize: 11, color: '#888' }}>{f.max}</span></span>
-            </div>
-            <div className="s-factor-bar-wrap">
-              <div className="s-factor-bar" style={{ width: `${Math.min(100, (parseFloat(f.value) / f.max) * 100)}%` }} />
-            </div>
-            <div className="s-factor-meta">{f.actual} {f.unit}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function buildActivityBars(contribution, commits = []) {
-  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const now = new Date();
-  const counts = weekdays.map(() => 0);
-  commits.forEach(commit => {
-    const dateValue = commit?.commit?.author?.date || commit?.commit?.committer?.date;
-    if (!dateValue) return;
-    const date = new Date(dateValue);
-    const dayOffset = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
-    if (dayOffset < 0 || dayOffset > 6) return;
-    const dayIndex = (now.getDay() + 6 - dayOffset + 7) % 7;
-    counts[dayIndex] += 1;
+function buildActivityBars(contribution) {
+  let counts = {};
+  try { counts = JSON.parse(contribution?.recentActivity || '{}'); } catch { /* Legacy record */ }
+  const bars = Array.from({length: 7}, (_, i) => {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() - 6 + i);
+    return { label: date.toLocaleDateString('en', {weekday: 'short', timeZone: 'UTC'}),
+      count: counts[date.toISOString().slice(0, 10)] || 0 };
   });
-  const maxCount = Math.max(...counts, 1);
-  return weekdays.map((label, index) => ({
-    label,
-    count: counts[index],
-    value: counts[index] ? Math.max(18, Math.round((counts[index] / maxCount) * 100)) : 0,
-  }));
+  const max = Math.max(1, ...bars.map(b => b.count));
+  return bars.map(b => ({ ...b, value: Math.round(100 * b.count / max) }));
 }
 
 export default function StudentDashboard() {
@@ -134,7 +81,6 @@ export default function StudentDashboard() {
   const [student] = useState(() => JSON.parse(localStorage.getItem('student') || '{}'));
   const [ciInfo, setCiInfo] = useState(null);
   const [branchInfo, setBranchInfo] = useState(null);
-  const [branchCommits, setBranchCommits] = useState([]);
   const [ciLoading, setCiLoading] = useState(false);
   const [teamContributions, setTeamContributions] = useState([]);
 
@@ -161,16 +107,9 @@ export default function StudentDashboard() {
             .then(b => {
               setBranchInfo(b || null);
               const branchName = b?.branchName;
-              if (!branchName) return { detail: null, commits: [] };
-              return Promise.all([
-                getBranchDetail(d.project.id, branchName).catch(() => null),
-                getBranchCommits(d.project.id, branchName).catch(() => []),
-              ]).then(([detail, commits]) => ({ detail, commits }));
+              return branchName ? getBranchDetail(d.project.id, branchName) : null;
             })
-            .then(result => {
-              setCiInfo(result?.detail || null);
-              setBranchCommits(result?.commits || []);
-            })
+            .then(detail => setCiInfo(detail))
             .catch(() => setCiInfo(null))
             .finally(() => setCiLoading(false));
         }
@@ -183,6 +122,12 @@ export default function StudentDashboard() {
   }, [student]);
 
   const project = data?.project || null;
+  useAnalysisUpdates(project?.id, () => {
+    fetchStudentDashboard(student.usn).then(fresh => {
+      setData(fresh);
+      setTeamContributions(fresh?.teamContributions || []);
+    }).catch(e => setError(e.message));
+  });
   const team = data?.team || null;
   const contribution = data?.contribution || null;
   const notifications = data?.notifications || [];
@@ -190,8 +135,9 @@ export default function StudentDashboard() {
   const score = contribution?.score || 0;
   const contribStatus = statusCfg[contribution?.status] || statusCfg.NOT_CONTRIBUTING;
   const activeDays = contribution?.activeDays || 0;
-  const teamAvg = team?.members?.length ? Math.max(20, Math.round(score - (team.members.length > 4 ? 4 : 2))) : Math.round(score);
-  const activityBars = buildActivityBars(contribution, branchCommits);
+  const teamAvg = teamContributions.length
+    ? Math.round(teamContributions.reduce((sum, r) => sum + Number(r.score || 0), 0) / teamContributions.length) : 0;
+  const activityBars = buildActivityBars(contribution);
 
   const ciLabel = ciLoading ? 'Checking…' : (ciInfo ? (ciInfo.commit?.sha ? `${ciInfo.commit.sha.slice(0,7)}` : 'Available') : '—');
 
@@ -200,56 +146,12 @@ export default function StudentDashboard() {
     daysLeft = Math.ceil((new Date(project.endDate) - new Date()) / (1000 * 60 * 60 * 24));
   }
 
-  const weights = {
-    code: team?.weightCode || 45,
-    review: team?.weightReview || 35,
-    tests: team?.weightTests || 20,
-  };
-  const totalWeight = weights.code + weights.review + weights.tests || 100;
-  const composition = {
-    code: Math.round((weights.code / totalWeight) * 100),
-    review: Math.round((weights.review / totalWeight) * 100),
-    tests: Math.round((weights.tests / totalWeight) * 100),
-  };
-
-  const bugsFixed = contribution?.issuesClosed || 0;
-  // Fallback to live branch metrics if periodic contribution score is not yet processed
-  const liveCommits = (contribution?.totalCommits && contribution.totalCommits > 0)
-    ? contribution.totalCommits
-    : (ciInfo?.commitsAhead || ciInfo?.totalCommits || (ciInfo?.commit ? 1 : 0));
-  const liveAdditions = (contribution?.linesAdded && contribution.linesAdded > 0)
-    ? contribution.linesAdded
-    : (ciInfo?.additions || (ciInfo?.commit ? 338 : 0));
-  // UNIFIED ABSOLUTE SCORE — same formula across Python, Java, and all React pages
-  const calcAbsoluteScore = (commits, additions, activeDays, bugFixes = 0) => {
-    const commitScore      = Math.min(1, commits / 5) * 30;
-    const linesScore       = Math.min(1, additions / 500) * 20;
-    const consistencyScore = Math.min(1, activeDays / 3) * 20;
-    const estFunctions     = Math.max(1, additions / 30);
-    const qualityScore     = Math.min(1, estFunctions / 5) * 15;
-    const bugScore         = Math.min(1, bugFixes / 1) * 15;
-    return Math.min(100, Math.round(commitScore + linesScore + consistencyScore + qualityScore + bugScore));
-  };
-  const calculatedScore = score > 0 ? score : (liveCommits > 0 ? calcAbsoluteScore(liveCommits, liveAdditions, activeDays, bugsFixed) : 0);
-  
-  // -- COMPUTE TEAM SHARE --
-  let teamTotalLines = 0;
-  let teamTotalCommits = 0;
-  if (teamContributions && teamContributions.length > 0) {
-    teamContributions.forEach(c => {
-      teamTotalLines += Number(c.linesAdded || 0);
-      teamTotalCommits += Number(c.totalCommits || 0);
-    });
-  }
-  const teamMemberCount = team?.members?.length || 0;
-  const teamShareReady = teamMemberCount === 0 || teamContributions.length >= teamMemberCount;
-  const myLinesShare = teamTotalLines > 0 ? liveAdditions / teamTotalLines : 0;
-  const myCommitsShare = teamTotalCommits > 0 ? liveCommits / teamTotalCommits : 0;
-  let teamSharePct = teamShareReady ? Math.round(((myLinesShare + myCommitsShare) / 2) * 100) : 0;
-  if (teamSharePct > 100) teamSharePct = 100;
-  if (liveCommits === 0 && liveAdditions === 0) teamSharePct = 0;
-  const teamShareLabel = teamShareReady ? `${teamSharePct}%` : 'Pending';
-  // ------------------------
+  const bugsFixed = contribution?.issuesClosed ?? 0;
+  const liveCommits = contribution?.totalCommits ?? 0;
+  const liveAdditions = contribution?.linesAdded ?? 0;
+  const calculatedScore = score;
+  const teamSharePct = contribution?.codeShare ?? 0;
+  const teamShareLabel = contribution?.codeShare == null ? 'Pending' : teamSharePct + '%';
 
   const pres = contribution?.presentationScore;
   const rep = contribution?.reportScore;
@@ -274,7 +176,6 @@ export default function StudentDashboard() {
 
   const marksPublished = project?.marksPublished === true || contribution?.marksPublished === true;
 
-  const functionsWritten = Math.max(1, Math.round((liveAdditions || 0) / 50) + liveCommits);
 
   const feedbackMessage = notifications[0]?.title || (score >= 70 ? 'Excellent progress this week. Keep pushing quality commits and tests.' : 'Keep refining your commits and test coverage to improve your momentum.');
   const dashboardActions = [
@@ -402,11 +303,11 @@ export default function StudentDashboard() {
                 <div className="s-overview-content">
                   <div className="s-overview">
                     <div className="s-score-card">
-                      <h3>My Team Share</h3>
+                      <h3>My Repository Code Share</h3>
                       <ScoreRing score={teamSharePct} max={100} label="%" displayValue={teamShareLabel} />
                       <div style={{ display: 'flex', justifyContent: 'center', gap: 12, fontSize: 12, flexWrap: 'wrap' }}>
                         <span className="s-badge-pill" style={{ color: '#6675ff', background: 'rgba(102,117,255,0.12)' }}>{contribution ? 'Analysis ready' : 'Waiting for teacher analysis'}</span>
-                        <span className="s-badge-pill" style={{ color: liveCommits > 0 ? '#2ecc71' : contribStatus.color, background: liveCommits > 0 ? 'rgba(46,204,113,0.12)' : contribStatus.bg }}>{liveCommits > 0 ? 'Active' : contribStatus.label}</span>
+                        <span className="s-badge-pill" style={{ color: contribStatus.color, background: contribStatus.bg }}>{contribStatus.label}</span>
                         <span className="s-badge-pill" style={{ color: '#6675ff', background: 'rgba(102,117,255,0.12)' }}>Team Avg {teamAvg}%</span>
                       </div>
                     </div>
@@ -430,24 +331,24 @@ export default function StudentDashboard() {
                   </div>
                   <div className="s-overview-right">
                     <div className="s-metric-row">
-                      <span><FaCodeBranch /> Code</span>
-                      <strong>{composition.code}%</strong>
+                      <span><FaCodeBranch /> Commits</span>
+                      <strong>{liveCommits}</strong>
                     </div>
                     <div className="s-metric-row">
                       <span><FaCommentDots /> Reviews</span>
-                      <strong>{composition.review}%</strong>
+                      <strong>{contribution?.reviewComments ?? 0}</strong>
                     </div>
                     <div className="s-metric-row">
-                      <span><FaTasks /> Testing</span>
-                      <strong>{composition.tests}%</strong>
+                      <span><FaTasks /> Pull requests</span>
+                      <strong>{contribution?.pullRequests ?? 0}</strong>
                     </div>
                     <div className="s-metric-row">
-                      <span><FaUserCheck /> Bugs Fixed</span>
+                      <span><FaUserCheck /> Issues resolved</span>
                       <strong>{bugsFixed}</strong>
                     </div>
                     <div className="s-metric-row">
-                      <span><FaRocket /> Functions Written</span>
-                      <strong>{functionsWritten}</strong>
+                      <span><FaRocket /> Lines added</span>
+                      <strong>{liveAdditions}</strong>
                     </div>
                   </div>
                 </div>
@@ -457,7 +358,7 @@ export default function StudentDashboard() {
 
             <div className="s-dashboard-side-stack">
               <div className="s-card s-card-glow s-activity-card">
-                <div className="s-card-head"><FaCalendarAlt /> Activity This Week</div>
+                <div className="s-card-head"><FaCalendarAlt /> GitHub activity in the last 7 days</div>
                 <div className="s-activity-chart">
                   {activityBars.map((bar) => (
                     <div className="s-activity-col" key={bar.label}>
@@ -470,7 +371,7 @@ export default function StudentDashboard() {
                 </div>
                 <div className="s-activity-footer">
                   <div><FaClock /> Active days: <strong>{activeDays}</strong></div>
-                  <div><FaBell /> Last update: <strong>{contribution?.lastCommitDate ? new Date(contribution.lastCommitDate).toLocaleDateString() : 'Pending'}</strong></div>
+                  <div><FaBell /> Last update: <strong>{contribution?.lastActivityDate ? new Date(contribution.lastActivityDate + 'Z').toLocaleDateString() : 'Pending'}</strong></div>
                 </div>
               </div>
 

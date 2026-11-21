@@ -16,6 +16,7 @@ import ProjectDetail from './teacher/ProjectDetail';
 import ProjectAnalyse from './teacher/ProjectAnalyse';
 import CreateTeam from './teacher/CreateTeam';
 import ContributionDashboard from './teacher/ContributionDashboard';
+import TeacherReport from './teacher/TeacherReport';
 import GitHubWorkflow from './teacher/GitHubWorkflow';
 import NotificationSettings from './teacher/NotificationSettings';
 import TeacherNotifications from './teacher/TeacherNotifications';
@@ -88,6 +89,7 @@ function App() {
         <Route path="/teacher/teams"                        element={<PrivateRoute role="TEACHER"><CreateTeam /></PrivateRoute>} />
         <Route path="/teacher/teams/create"                 element={<PrivateRoute role="TEACHER"><CreateTeam /></PrivateRoute>} />
         <Route path="/teacher/contributions"                element={<PrivateRoute role="TEACHER"><ContributionDashboard /></PrivateRoute>} />
+        <Route path="/teacher/report"                      element={<PrivateRoute role="TEACHER"><TeacherReport /></PrivateRoute>} />
         <Route path="/teacher/github-workflow"              element={<PrivateRoute role="TEACHER"><GitHubWorkflow /></PrivateRoute>} />
         <Route path="/teacher/notifications"                element={<PrivateRoute role="TEACHER"><NotificationSettings /></PrivateRoute>} />
         <Route path="/teacher/notifications/list"            element={<PrivateRoute role="TEACHER"><TeacherNotifications /></PrivateRoute>} />

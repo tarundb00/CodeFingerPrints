@@ -1,0 +1,33 @@
+.repo-evidence {
+  margin: 20px 0; padding: clamp(16px, 3vw, 28px); border: 1px solid var(--border-color, #dbe3ef);
+  border-radius: 14px; background: var(--card-bg, white); color: var(--text-primary, #1d2433);
+}
+.repo-evidence h2 { font-size: 1.18rem; margin: 0 0 6px; }
+.repo-evidence h3 { font-size: 1rem; margin: 20px 0 8px; }
+.repo-evidence p, .repo-evidence small { color: var(--text-muted, #526177); }
+.repo-evidence header, .evidence-controls, .evidence-pagination, .evidence-tabs {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px;
+}
+.repo-evidence header { justify-content: space-between; }
+.repo-evidence button, .repo-evidence select, .repo-evidence input {
+  background: var(--card-bg, white); color: inherit; border: 1px solid var(--border-color, #c6d2e1);
+  border-radius: 6px; font: inherit; padding: 6px 9px; font-size: .85rem;
+}
+.repo-evidence button { cursor: pointer; }
+.repo-evidence button:disabled { opacity: .45; cursor: default; }
+.evidence-tabs { margin: 16px 0; gap: 4px; }
+.evidence-tabs [aria-pressed="true"] { color: white; background: #414e9a; border-color: #414e9a; }
+.evidence-metrics { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 18px 0; }
+.evidence-metrics div { display: grid; gap: 3px; }
+.evidence-metrics dt { color: var(--text-muted,#526177); font-size: .78rem; }
+.evidence-metrics dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+.evidence-table-wrap { overflow-x: auto; }
+.evidence-table-wrap table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+.evidence-table-wrap td, .evidence-table-wrap th { padding: 8px; text-align: left; border-bottom: 1px solid var(--border-color, #e1e6ef); overflow-wrap: anywhere; }
+.evidence-pagination { margin-top: 8px; justify-content: flex-end; font-size: .8rem; }
+.evidence-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); max-width: 450px; gap: 4px; margin: 10px 0 16px; font-size: .8rem; }
+.evidence-calendar span { padding: 5px; text-align: center; border-radius: 4px; }
+.evidence-calendar [data-level="0"] { background: var(--border-color, #e5eaf1); }
+.evidence-calendar [data-level="1"] { background: #c4e4df; color: #153e3a; }
+.evidence-calendar [data-level="2"] { background: #6eb5a9; color: #102c27; }
+.evidence-calendar [data-level="3"] { background: #26685d; color: white; }

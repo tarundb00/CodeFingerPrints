@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import RepositoryEvidence from '../components/RepositoryEvidence';
+import useAnalysisUpdates from '../components/useAnalysisUpdates';
 import TeacherLayout from './TeacherLayout';
 import {
   FaArrowLeft, FaChartLine, FaCheckCircle, FaCode, FaClock,
@@ -62,6 +64,8 @@ export default function ProjectAnalyse() {
     setAudits(a || []);
   };
 
+  useAnalysisUpdates(projectId, () => loadAnalysis().catch(e => toast.error(e.message)));
+
   const handleAnalyze = async () => {
     setAnalyzing(true);
     try {
@@ -93,7 +97,7 @@ export default function ProjectAnalyse() {
   };
 
   const downloadCsv = () => {
-    const headers = ['Student', 'Score', 'Commits', 'Active Days', 'Bug Fixes', 'Status'];
+    const headers = ['Student', 'Score', 'Commits', 'Active Days', 'Issues resolved', 'Status'];
     const rows = sortedRows(contributions).map(item => [
       item.studentName || item.studentUsn || 'Unknown',
       item.score || 0,
@@ -150,7 +154,7 @@ export default function ProjectAnalyse() {
   // Calculate progress percentage
   const progressPercent = Math.round(Math.min(100, Number(avgScore) || 0));
 
-  const activeContributors = contributions.filter(c => (c.totalCommits || 0) > 0).length;
+  const activeContributors = contributions.filter(c => c.status === 'ACTIVE').length;
   const finalPercent = Math.min(100, Math.round((progressPercent * 0.75) + ((activeContributors / Math.max(contributions.length, 1)) * 25)));
   const getManualTotal = contribution => [contribution.presentationScore, contribution.reportScore, contribution.documentationScore]
     .reduce((sum, value) => sum + (Number(value) || 0), 0);
@@ -289,7 +293,7 @@ export default function ProjectAnalyse() {
                 <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#666' }}>Score</th>
                 <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#666' }}>Commits</th>
                 <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#666' }}>Active Days</th>
-                <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#666' }}>Bug Fixes</th>
+                <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#666' }}>Issues resolved</th>
                 <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#666' }}>Manual /75</th>
                 <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#666' }}>Final</th>
               </tr>
@@ -355,6 +359,7 @@ export default function ProjectAnalyse() {
         </div>
       </div>
       </div>
+      <RepositoryEvidence project={project} scores={contributions} revision={contributions} />
     </TeacherLayout>
   );
 }

@@ -4,7 +4,7 @@ import {
   FaChevronLeft, FaChevronRight, FaTachometerAlt,
   FaUserCircle, FaUsers, FaProjectDiagram,
   FaSignOutAlt, FaBell, FaChartBar, FaGithub,
-  FaShieldAlt, FaMoon, FaSun, FaCog,
+  FaShieldAlt, FaMoon, FaSun, FaCog, FaFileAlt,
 } from 'react-icons/fa';
 import { IoFingerPrint } from 'react-icons/io5';
 import { fetchInactiveStudents } from '../services/api';
@@ -16,6 +16,7 @@ const navItems = [
   { icon: <FaTachometerAlt />,  label: 'Dashboard',         path: '/teacher/dashboard' },
   { icon: <FaProjectDiagram />, label: 'Projects & Teams',  path: '/teacher/projects' },
   { icon: <FaChartBar />,       label: 'Contributions',     path: '/teacher/contributions' },
+  { icon: <FaFileAlt />,        label: 'Report',            path: '/teacher/report' },
   { icon: <FaGithub />,         label: 'GitHub',            path: '/teacher/github-workflow' },
   { icon: <FaBell />,           label: 'Alerts',             path: '/teacher/alerts' },
 ];

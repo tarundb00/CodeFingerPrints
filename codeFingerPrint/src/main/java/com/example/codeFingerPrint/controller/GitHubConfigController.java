@@ -1,5 +1,6 @@
 package com.example.codeFingerPrint.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.example.codeFingerPrint.entity.GitHubConfig;
 import com.example.codeFingerPrint.repository.GitHubConfigRepository;
 import com.example.codeFingerPrint.dtos.response.MessageResponse;
@@ -40,6 +41,7 @@ public class GitHubConfigController {
         .orElse(ResponseEntity.notFound().build());
   }
 
+  @PreAuthorize("hasRole('ADMIN')")
   @PostMapping
   public ResponseEntity<GitHubConfig> create(@RequestBody GitHubConfig cfg) {
     String now = LocalDateTime.now().format(FMT);
@@ -49,6 +51,7 @@ public class GitHubConfigController {
     return ResponseEntity.status(HttpStatus.CREATED).body(repo.save(cfg));
   }
 
+  @PreAuthorize("hasRole('ADMIN')")
   @PutMapping("/{id}")
   public ResponseEntity<GitHubConfig> update(@PathVariable Long id, @RequestBody GitHubConfig body) {
     return repo.findById(id).map(existing -> {
@@ -73,6 +76,7 @@ public class GitHubConfigController {
     }).orElse(ResponseEntity.notFound().build());
   }
 
+  @PreAuthorize("hasRole('ADMIN')")
   @DeleteMapping("/{id}")
   public ResponseEntity<?> delete(@PathVariable Long id) {
     if (!repo.existsById(id))

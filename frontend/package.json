@@ -10,6 +10,7 @@
     "@testing-library/user-event": "^13.5.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-icons": "^5.7.0",
@@ -26,6 +27,11 @@
     "eject": "react-scripts eject"
   },
   "proxy": "http://localhost:8080",
+  "jest": {
+    "moduleNameMapper": {
+      "^react-router/dom$": "<rootDir>/node_modules/react-router/dist/development/dom-export.js"
+    }
+  },
   "eslintConfig": {
     "extends": [
       "react-app",

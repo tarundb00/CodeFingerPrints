@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   FaGithub, FaKey, FaBuilding, FaCodeBranch, FaShieldAlt,
   FaEdit, FaTrash, FaPlus, FaTimes, FaCheckCircle,
-  FaEye, FaEyeSlash, FaCopy, FaSync, FaExclamationTriangle,
+  FaEye, FaEyeSlash, FaSync, FaExclamationTriangle,
 } from 'react-icons/fa';
 import AdminLayout from './AdminLayout';
 import './GitHubSettings.css';
@@ -20,7 +20,7 @@ const FIELD_DEFS = [
     icon: <FaKey />,
     type: 'secret',
     placeholder: 'ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-    hint: 'Required scopes: repo, admin:org, delete_repo',
+    hint: 'Analysis reads Contents, Pull requests and Issues. Connecting a webhook also needs Webhooks write access.',
     section: 'auth',
   },
   {
@@ -117,7 +117,6 @@ export default function GitHubSettings() {
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [revealed, setRevealed] = useState({});
-  const [copied, setCopied] = useState('');
   const [testStatus, setTestStatus] = useState(null);
   const [editingPatId, setEditingPatId] = useState(null);
   const [patDraft, setPatDraft] = useState('');
@@ -134,7 +133,7 @@ export default function GitHubSettings() {
 
   const openAdd = () => { setForm(emptyForm()); setEditingId(null); setTestStatus(null); setModalOpen(true); };
   const openEdit = (cfg) => {
-    setForm({ ...cfg });
+    setForm({ ...cfg, personalAccessToken: '', webhookSecret: '', appClientSecret: '' });
     setEditingId(cfg.id);
     setTestStatus(null);
     setModalOpen(true);
@@ -191,18 +190,11 @@ export default function GitHubSettings() {
     }
   };
 
-  const copyVal = (val, key) => {
-    navigator.clipboard.writeText(val).catch(() => {});
-    setCopied(key);
-    setTimeout(() => setCopied(''), 1500);
-    toast.info('Copied to clipboard');
-  };
-
   const toggleReveal = (key) => setRevealed(r => ({ ...r, [key]: !r[key] }));
 
   const startPatEdit = (cfg) => {
     setEditingPatId(cfg.id);
-    setPatDraft(cfg.personalAccessToken || '');
+    setPatDraft('');
     setPatVisible(false);
   };
 
@@ -225,7 +217,6 @@ export default function GitHubSettings() {
     }
   };
 
-  const maskSecret = (val) => val ? val.slice(0, 6) + '••••••••••••••••' : '—';
 
   const grouped = Object.entries(SECTIONS).map(([sec, meta]) => ({
     ...meta, sec,
@@ -332,10 +323,7 @@ export default function GitHubSettings() {
                       </div>
                     ) : (
                       <div className="gh-secret-cell">
-                        <span className="gh-td-mono">{maskSecret(cfg.personalAccessToken)}</span>
-                        <button className="gh-copy-btn" title="Copy" onClick={() => copyVal(cfg.personalAccessToken, `pat-${cfg.id}`)}>
-                          {copied === `pat-${cfg.id}` ? <FaCheckCircle style={{ color: '#2ecc71' }} /> : <FaCopy />}
-                        </button>
+                        <span className="gh-td-mono">{cfg.tokenConfigured ? "Configured" : "Missing"}</span>
                         <button className="gh-copy-btn" title="Edit API key" onClick={() => startPatEdit(cfg)}>
                           <FaEdit />
                         </button>

@@ -1,5 +1,3 @@
-DROP TABLE IF EXISTS milestones;
-
 CREATE TABLE IF NOT EXISTS notifications (
     id BIGINT NOT NULL AUTO_INCREMENT,
     recipient_key VARCHAR(255) NOT NULL,

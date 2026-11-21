@@ -303,6 +303,10 @@ export async function fetchProject(id) {
   return authenticatedFetch(`/projects/${id}`);
 }
 
+export async function fetchProjectLanguages(projectId) {
+  return authenticatedFetch(`/github/workflow/languages/${projectId}`);
+}
+
 export async function createProject(payload) {
   return authenticatedFetch('/projects', {
     method: 'POST', headers: authHeaders(), body: JSON.stringify(payload),
@@ -378,9 +382,9 @@ export async function fetchInactiveStudents() {
 
 export async function analyzeContributions(projectId) {
   if (isStudentSession()) return { message: 'Contribution analysis is managed by the teacher.' };
-  return authenticatedFetch(`/contributions/analyze/${projectId}`, {
+  return handle(await fetch(API_BASE + '/contributions/analyze/' + projectId, {
     method: 'POST', headers: authHeaders(),
-  });
+  }));
 }
 
 export async function updateContribution(id, payload) {
@@ -398,6 +402,19 @@ export async function deleteContribution(id) {
 /* ══════════════════════════════════════
    STUDENT PORTAL
 ══════════════════════════════════════ */
+export async function connectRepositoryWebhook(projectId) {
+  return handle(await fetch(API_BASE + '/contributions/project/' + projectId + '/webhook', {
+    method: 'POST', headers: authHeaders(),
+  }));
+}
+
+export async function fetchRepositoryReport(projectId, usn) {
+  const path = usn
+    ? '/students/dashboard/' + encodeURIComponent(usn) + '/report/' + projectId
+    : '/contributions/project/' + projectId + '/report';
+  return handle(await fetch(API_BASE + path, { headers: authHeaders(), credentials: usn ? 'include' : 'same-origin' }));
+}
+
 export async function fetchStudentDashboard(usn) {
   const data = await handle(await fetch(`${API_BASE}/students/dashboard/${usn}`, { headers: authHeaders() }));
   if (data?.student) {
@@ -417,13 +434,17 @@ export async function updateStudentProfile(id, payload) {
   }));
 }
 
+export function endStudentSession() {
+  return fetch(API_BASE + '/students/logout', { method: 'POST', credentials: 'include' });
+}
+
 export async function studentLogin(credentials) {
   const payload = {
     usn: credentials.usn.toUpperCase().trim(),
     email: credentials.email.trim().toLowerCase(),
   };
   const data = await requestWithFallback('/students/login', {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
@@ -504,7 +525,7 @@ export async function compareBranch(projectId, branch) {
 }
 export async function createPullRequest(projectId, payload) {
   return handle(await fetch(`${API_BASE}/github/workflow/pull-request/${projectId}`, {
-    method: 'POST', headers: authHeaders(), body: JSON.stringify(payload),
+    method: 'POST', credentials: 'include', headers: authHeaders(), body: JSON.stringify(payload),
   }));
 }
 export async function listPullRequests(projectId, state = 'open') {

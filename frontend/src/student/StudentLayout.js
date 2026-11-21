@@ -7,8 +7,7 @@ import {
   FaStar, FaMoon, FaSun,
 } from 'react-icons/fa';
 import { IoFingerPrint } from 'react-icons/io5';
-import { fetchStudentByUsn } from '../services/api';
-import { useTheme } from '../utils/ThemeContext';
+import { fetchStudentByUsn, endStudentSession } from '../services/api';
 import './student.css';
 import NotificationDropdown from '../components/NotificationDropdown';
 
@@ -26,7 +25,6 @@ export default function StudentLayout({ children, title, subtitle }) {
     try { return JSON.parse(localStorage.getItem('student') || '{}'); }
     catch { return {}; }
   });
-  const { theme, toggleTheme } = useTheme();
   const navigate  = useNavigate();
   const location  = useLocation();
 
@@ -47,6 +45,7 @@ export default function StudentLayout({ children, title, subtitle }) {
   const avatarLetter = (displayName[0] || 'S').toUpperCase();
 
   const handleLogout = () => {
+    endStudentSession().catch(() => {});
     localStorage.removeItem('token');
     localStorage.removeItem('student');
     window.dispatchEvent(new Event('cfp-session-changed'));

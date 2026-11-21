@@ -1,92 +1,85 @@
-from github import Github
-from github.Repository import Repository
-from typing import Any, List
-from .models import RepoAnalysis, FileRecord, CommitRecord
-import datetime
+from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from github import Auth, Github
+
+from .git_history import GitHistory, clone_repository
+from .models import RepoAnalysis
 
 
-ANALYZABLE_EXTENSIONS = (
-    '.py', '.js', '.ts', '.jsx', '.tsx',
-    '.java', '.kt', '.go', '.c', '.cpp', '.cs',
-)
+def login(user):
+    return user.login if user else None
+
+
+def stamp(value):
+    return value.astimezone(timezone.utc).isoformat() if value else None
 
 
 class GitHubClient:
-    def __init__(self, token: str | None = None):
-        if token:
-            self.client = Github(token, per_page=100)
-        else:
-            self.client = Github()
+    def __init__(self, token=None):
+        self.token = token
+        self.client = Github(auth=Auth.Token(token) if token else None, per_page=100, timeout=30, retry=0)
 
-    def get_repo(self, owner: str | None, repo_name: str) -> Repository:
-        if repo_name and '/' in repo_name:
-            return self.client.get_repo(repo_name)
-        if owner:
-            return self.client.get_repo(f'{owner}/{repo_name}')
-        raise ValueError('Repository owner is required when repo name is not a full path')
+    def get_repo(self, owner, repo_name):
+        full_name = repo_name if '/' in repo_name else f'{owner}/{repo_name}' if owner else None
+        if not full_name or len(full_name.split('/')) != 2:
+            raise ValueError('Use owner/repository or provide an owner.')
+        return self.client.get_repo(full_name)
 
-    def analyze_repo(self, repo: Repository, branch: str | None = None) -> RepoAnalysis:
-        branch_name = branch or repo.default_branch
-        seen_shas: set = set()
-        all_branches = [b.name for b in repo.get_branches()]
-        if branch_name not in all_branches:
-            all_branches.append(branch_name)
+    @staticmethod
+    def collaboration(repo):
+        pulls, issues = [], []
+        for pr in repo.get_pulls(state='all'):
+            reviews = [{'author': login(r.user), 'state': r.state, 'date': stamp(r.submitted_at)}
+                       for r in pr.get_reviews() if r.submitted_at and r.state != 'PENDING']
+            pulls.append({'number': pr.number, 'title': pr.title, 'author': login(pr.user),
+                          'date': stamp(pr.created_at), 'closed_at': stamp(pr.closed_at),
+                          'merged_by': login(pr.merged_by) if pr.merged_at else None,
+                          'state': 'merged' if pr.merged_at else 'closed' if pr.state == 'closed' else 'open',
+                          'reviews': reviews})
+        if repo.has_issues:
+            pull_numbers = {pr['number'] for pr in pulls}
+            for issue in repo.get_issues(state='all'):
+                if issue.number in pull_numbers:
+                    continue
+                # PyGithub completes the issue once when detailed fields are requested.
+                details = issue.raw_data
+                if 'pull_request' in details:
+                    continue
+                issues.append({'number': issue.number, 'title': issue.title, 'author': login(issue.user),
+                               'date': stamp(issue.created_at), 'state': issue.state,
+                               'reason': details.get('state_reason'), 'closed_at': stamp(issue.closed_at),
+                               'closer': login(issue.closed_by) if issue.closed_at else None,
+                               'assignees': [u.login for u in issue.assignees],
+                               'bug': any(label.name.casefold() in {'bug', 'defect'} for label in issue.labels)})
+        return pulls, issues
 
-        authors: dict = {}
-        commit_records: List[CommitRecord] = []
+    def analyze_repo(self, repo, branch=None, students=()):
+        branch = branch or repo.default_branch
+        authors, identities = {}, {}
 
-        for b_name in all_branches:
-            try:
-                for commit in repo.get_commits(sha=b_name):
-                    if commit.sha in seen_shas:
-                        continue
-                    seen_shas.add(commit.sha)
-                    if commit.author and commit.author.login:
-                        author = commit.author.login
-                    elif commit.commit.author.name:
-                        author = commit.commit.author.name
-                    else:
-                        author = commit.commit.author.email or 'unknown'
-                    message = commit.commit.message or ''
-                    date = commit.commit.author.date
-                    stats = commit.stats
-                    commit_records.append(CommitRecord(
-                        sha=commit.sha, author=author, message=message, date=date,
-                        total=stats.total, additions=stats.additions, deletions=stats.deletions,
-                        files=[f.filename for f in commit.files] if commit.files else [],
-                    ))
-                    if author not in authors:
-                        authors[author] = {'commits': 0, 'additions': 0, 'deletions': 0}
-                    authors[author]['commits'] += 1
-                    authors[author]['additions'] += stats.additions
-                    authors[author]['deletions'] += stats.deletions
-            except Exception:
-                continue
+        def identify(sha, name, email):
+            key = email.casefold() or name
+            if key not in identities:
+                account = login(repo.get_commit(sha).author)
+                identities[key] = account or email or name or 'unknown'
+                authors.setdefault(identities[key], {'login': account, 'names': set(), 'emails': set()})
+            identity = authors[identities[key]]
+            if name:
+                identity['names'].add(name)
+            if email:
+                identity['emails'].add(email)
+            return identities[key]
 
-        files = self._collect_files(repo, branch_name)
-        return RepoAnalysis(
-            owner=repo.owner.login, repo=repo.name, branch=branch_name,
-            default_branch=repo.default_branch, commits=commit_records,
-            authors=authors, files=files,
-            analyzed_at=datetime.datetime.utcnow().isoformat() + 'Z',
-        )
-
-    def _collect_files(self, repo: Repository, branch: str) -> List[FileRecord]:
-        try:
-            tree = repo.get_git_tree(branch, recursive=True).tree
-        except Exception:
-            return []
-        files: List[FileRecord] = []
-        for element in tree:
-            if element.type != 'blob':
-                continue
-            if not any(element.path.endswith(ext) for ext in ANALYZABLE_EXTENSIONS):
-                continue
-            if any(skip in element.path for skip in ['node_modules/', 'vendor/', '.min.', 'dist/', 'build/', '__pycache__/']):
-                continue
-            try:
-                content = repo.get_contents(element.path, ref=branch).decoded_content.decode('utf-8', errors='replace')
-                files.append(FileRecord(path=element.path, content=content))
-            except Exception:
-                continue
-        return files
+        with TemporaryDirectory(prefix='codefingerprint-') as directory:
+            path = Path(directory) / 'history.git'
+            clone_repository(repo.full_name, self.token, path)
+            history = GitHistory(path)
+            commits, fixes = history.commits(identify)
+            files = history.files(branch) if commits else []
+        pulls, issues = self.collaboration(repo)
+        return RepoAnalysis(owner=repo.owner.login, repo=repo.name, branch=branch,
+                            default_branch=repo.default_branch, commits=commits, files=files,
+                            authors=authors, pulls=pulls, issues=issues, fixes=fixes, students=students,
+                            analyzed_at=datetime.now(timezone.utc))

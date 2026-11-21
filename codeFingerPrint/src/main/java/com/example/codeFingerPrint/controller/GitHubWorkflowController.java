@@ -1,5 +1,6 @@
 package com.example.codeFingerPrint.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import com.example.codeFingerPrint.dtos.response.MessageResponse;
 import com.example.codeFingerPrint.entity.*;
 import com.example.codeFingerPrint.repository.*;
@@ -7,12 +8,14 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.util.*;
 
 @RestController
 @RequestMapping("/api/github/workflow")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = {"http://localhost:3000", "http://127.0.0.1:3000", "${app.frontend.origin:http://localhost:3000}"}, allowCredentials = "true")
 public class GitHubWorkflowController {
 
   private final GitHubConfigRepository configRepo;
@@ -20,6 +23,7 @@ public class GitHubWorkflowController {
   private final ProjectRepository projectRepo;
   private final StudentRepository studentRepo;
   private final StudentBranchRepository branchRepo;
+  private final ProjectAuditRepository audits;
   private final RestTemplate restTemplate = new RestTemplate();
   private static final String GH = "https://api.github.com";
 
@@ -27,7 +31,8 @@ public class GitHubWorkflowController {
       TeamRepository teamRepo,
       ProjectRepository projectRepo,
       StudentRepository studentRepo,
-      StudentBranchRepository branchRepo) {
+      StudentBranchRepository branchRepo, ProjectAuditRepository audits) {
+    this.audits = audits;
     this.configRepo = configRepo;
     this.teamRepo = teamRepo;
     this.projectRepo = projectRepo;
@@ -81,11 +86,68 @@ public class GitHubWorkflowController {
   }
 
   private String repoPath(GitHubConfig cfg, String repoName, String pat, String preferredOwner) {
+    if (repoName != null && repoName.contains("/")) return repoName.trim();
     return repoOwner(cfg, pat, preferredOwner) + "/" + repoName;
   }
 
   String repoPath(GitHubConfig cfg, Project project) {
     return repoPath(cfg, project.getGithubRepoName(), cfg.getPersonalAccessToken(), project.getGithubOwner());
+  }
+
+  @GetMapping("/languages/{projectId}")
+  public ResponseEntity<?> getRepositoryLanguages(@PathVariable Long projectId) {
+    GitHubConfig cfg = activeConfig();
+    if (cfg == null || cfg.getPersonalAccessToken() == null || cfg.getPersonalAccessToken().isBlank()) {
+      return ResponseEntity.badRequest().body(new MessageResponse("No active GitHub config or token."));
+    }
+
+    Project project = projectRepo.findById(projectId).orElse(null);
+    if (project == null || project.getGithubRepoName() == null || project.getGithubRepoName().isBlank()) {
+      return ResponseEntity.badRequest().body(new MessageResponse("Project or GitHub repository not found."));
+    }
+
+    try {
+      String repoName = project.getGithubRepoName().trim().replaceAll("/+$", "");
+      String owner = project.getGithubOwner();
+      if (repoName.startsWith("https://github.com/")) {
+        repoName = repoName.substring("https://github.com/".length());
+      }
+      if (repoName.contains("/")) {
+        String[] parts = repoName.split("/");
+        if (owner == null || owner.isBlank()) {
+          owner = parts[parts.length - 2];
+        }
+        repoName = parts[parts.length - 1];
+      }
+      if (repoName.endsWith(".git")) {
+        repoName = repoName.substring(0, repoName.length() - 4);
+      }
+      if (repoName.isBlank()) {
+        return ResponseEntity.badRequest().body(new MessageResponse("GitHub repository owner or name is missing."));
+      }
+      String repositoryPath = repoPath(cfg, repoName, cfg.getPersonalAccessToken(), owner);
+      String[] coordinates = repositoryPath.split("/", 2);
+
+      URI uri = UriComponentsBuilder.fromUriString(GH)
+          .pathSegment("repos", coordinates[0], coordinates[1], "languages")
+          .build()
+          .encode()
+          .toUri();
+      ResponseEntity<Map> response = restTemplate.exchange(
+          uri, HttpMethod.GET, new HttpEntity<>(headers(cfg.getPersonalAccessToken())), Map.class);
+      return ResponseEntity.ok(response.getBody() == null ? Map.of() : response.getBody());
+    } catch (HttpClientErrorException e) {
+      int status = e.getStatusCode().value();
+      if (status == 404) {
+        return ResponseEntity.status(404).body(new MessageResponse("GitHub repository was not found or is inaccessible."));
+      }
+      if (status == 401 || status == 403) {
+        return ResponseEntity.status(status).body(new MessageResponse("GitHub authentication failed. Check the configured token."));
+      }
+      return ResponseEntity.status(500).body(new MessageResponse("GitHub error: " + e.getMessage()));
+    } catch (Exception e) {
+      return ResponseEntity.status(500).body(new MessageResponse("Unable to load GitHub repository languages: " + e.getMessage()));
+    }
   }
 
   private boolean hasPushPermission(GitHubConfig cfg, String repoName, String pat, String githubUsername,
@@ -549,7 +611,7 @@ public class GitHubWorkflowController {
    */
   @PostMapping("/pull-request/{projectId}")
   public ResponseEntity<?> createPullRequest(@PathVariable Long projectId,
-      @RequestBody Map<String, String> body) {
+      @RequestBody Map<String, String> body, HttpServletRequest request) {
     GitHubConfig cfg = activeConfig();
     if (cfg == null)
       return ResponseEntity.badRequest().body(new MessageResponse("No active GitHub config."));
@@ -602,6 +664,17 @@ public class GitHubWorkflowController {
         sb.setPrNumber(((Number) pr.get("number")).intValue());
         sb.setPrUrl((String) pr.get("html_url"));
         branchRepo.save(sb);
+        var session = request.getSession(false);
+        if (session != null && sb.getStudentUsn() != null &&
+            sb.getStudentUsn().equals(session.getAttribute("reportStudentUsn"))) {
+          ProjectAudit audit = new ProjectAudit();
+          audit.setProjectId(projectId);
+          audit.setAction("PR_SUBMITTED");
+          audit.setActor(sb.getStudentUsn());
+          audit.setPullRequestNumber(sb.getPrNumber());
+          audit.setRepositoryName(repoPath(cfg, project));
+          audits.save(audit);
+        }
       });
 
       Map<String, Object> result = new HashMap<>();

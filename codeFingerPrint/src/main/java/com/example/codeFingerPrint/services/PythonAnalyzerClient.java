@@ -1,50 +1,48 @@
 package com.example.codeFingerPrint.services;
 
-import com.example.codeFingerPrint.entity.GitHubConfig;
-import com.example.codeFingerPrint.repository.GitHubConfigRepository;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
+import java.time.Duration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpEntity;
+import com.example.codeFingerPrint.entity.GitHubConfig;
+import com.example.codeFingerPrint.entity.Student;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import tools.jackson.databind.JsonNode;
+import java.util.*;
 
 @Service
 public class PythonAnalyzerClient {
+  private final RestTemplate client;
+  private final String url;
 
-  private final RestTemplate restTemplate = new RestTemplate();
-  private final String analyzerUrl;
-  private final GitHubConfigRepository githubConfigRepository;
-
-  public PythonAnalyzerClient(
-      @Value("${python.analyzer.url:http://localhost:9000}") String analyzerUrl,
-      GitHubConfigRepository githubConfigRepository) {
-    this.analyzerUrl = analyzerUrl;
-    this.githubConfigRepository = githubConfigRepository;
+  public PythonAnalyzerClient(@Value("${python.analyzer.url:http://localhost:9000}") String url,
+      @Value("${python.analyzer.read-timeout:PT30M}") Duration timeout) {
+    this.url = url;
+    var factory = new SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(Duration.ofSeconds(5));
+    factory.setReadTimeout(timeout);
+    client = new RestTemplate(factory);
   }
 
-  @SuppressWarnings("rawtypes")
-  public Map<String, Object> analyzeRepo(String owner, String repo, String branch) {
-    HttpHeaders headers = new HttpHeaders();
+  public JsonNode analyzeRepo(String repo, String branch, GitHubConfig config, List<Student> students, Map<Integer, String> submitters) {
+    Map<String, Object> request = new HashMap<>();
+    request.put("repo", repo);
+    request.put("portal_pull_authors", submitters);
+    if (branch != null && !branch.isBlank()) request.put("branch", branch);
+    var headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);
-
-    // Fetch the active GitHub config to get the PAT
-    Optional<GitHubConfig> activeConfig = githubConfigRepository.findFirstByStatusOrderByIdDesc("active");
-    String pat = activeConfig.map(GitHubConfig::getPersonalAccessToken).orElse(null);
-
-    Map<String, Object> payload = new HashMap<>();
-    payload.put("owner", owner);
-    payload.put("repo", repo);
-    payload.put("branch", branch);
-    payload.put("token", pat);
-
-    HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-    ResponseEntity<Map> response = restTemplate.postForEntity(analyzerUrl + "/analyze/project", request, Map.class);
-    return response.getBody();
+    if (config != null && config.isTokenConfigured()) headers.setBearerAuth(config.getPersonalAccessToken());
+    request.put("students", students.stream().map(s -> {
+      Map<String, String> identity = new HashMap<>();
+      identity.put("usn", s.getUsn());
+      identity.put("login", s.getGithubUsername());
+      identity.put("email", s.getEmail());
+      identity.put("name", s.getName());
+      return identity;
+    }).toList());
+    return client.postForObject(url + "/analyze/project", new HttpEntity<>(request, headers), JsonNode.class);
   }
 }

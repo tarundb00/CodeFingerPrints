@@ -33,8 +33,13 @@ export default function GlobalWebSocket() {
 
   useEffect(() => {
     if (!session.token || !session.recipientKey) return undefined;
+    const apiOrigin = process.env.REACT_APP_API_BASE
+      ? new URL(process.env.REACT_APP_API_BASE, window.location.origin).origin : null;
+    const devOrigin = window.location.protocol + '//' + window.location.hostname + ':8080';
+    const socketUrl = process.env.REACT_APP_WS_URL ||
+      ((process.env.NODE_ENV === 'development' && !process.env.REACT_APP_API_BASE) ? devOrigin : apiOrigin || window.location.origin) + '/ws';
     const client = new Client({
-      webSocketFactory: () => new SockJS(`${window.location.protocol}//${window.location.hostname}:8080/ws`),
+      webSocketFactory: () => new SockJS(socketUrl),
       reconnectDelay: 5000,
       onConnect: () => {
         const seen = new Set();
@@ -53,6 +58,13 @@ export default function GlobalWebSocket() {
         };
         client.subscribe(`/topic/notifications/${session.recipientKey}`, show);
         client.subscribe('/topic/notifications', show);
+        client.subscribe('/topic/analysis', message => {
+          try {
+            const { projectId } = JSON.parse(message.body);
+            window.dispatchEvent(new CustomEvent('cfp-analysis-updated', { detail: projectId }));
+          } catch { /* Ignore invalid updates. */ }
+        });
+        window.dispatchEvent(new CustomEvent('cfp-analysis-updated'));
       },
       onStompError: () => {},
       onWebSocketError: () => {},

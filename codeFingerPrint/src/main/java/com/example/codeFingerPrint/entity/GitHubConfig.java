@@ -1,5 +1,6 @@
 package com.example.codeFingerPrint.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 
 @Entity
@@ -13,6 +14,7 @@ public class GitHubConfig {
   private String name;
 
   @Column(length = 512)
+  @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
   private String personalAccessToken;
 
   private String organizationName;
@@ -20,6 +22,7 @@ public class GitHubConfig {
   private String repoVisibility;
 
   @Column(length = 512)
+  @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
   private String webhookSecret;
 
   @Column(length = 512)
@@ -28,6 +31,7 @@ public class GitHubConfig {
   private String appClientId;
 
   @Column(length = 512)
+  @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
   private String appClientSecret;
 
   private String status;
@@ -39,6 +43,7 @@ public class GitHubConfig {
   public String getName() { return name; }
   public void setName(String name) { this.name = name; }
 
+  public boolean isTokenConfigured() { return personalAccessToken != null && !personalAccessToken.isBlank(); }
   public String getPersonalAccessToken() { return personalAccessToken; }
   public void setPersonalAccessToken(String personalAccessToken) { this.personalAccessToken = personalAccessToken; }
 

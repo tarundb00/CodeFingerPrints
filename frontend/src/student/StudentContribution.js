@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import RepositoryEvidence from '../components/RepositoryEvidence';
+import ScoreBreakdown from '../components/ScoreBreakdown';
+import useAnalysisUpdates from '../components/useAnalysisUpdates';
 import StudentLayout from './StudentLayout';
 import {
   FaGithub, FaCodeBranch, FaPlus, FaMinus, FaCalendarAlt,
   FaChartBar, FaExclamationTriangle, FaCheckCircle, FaClock, FaFire, FaInfoCircle, FaBug, FaEdit, FaAward, FaLock,
 } from 'react-icons/fa';
-import { fetchStudentDashboard, analyzeContributions, fetchBugsByProject, createBug, updateBug } from '../services/api';
+import { fetchStudentDashboard, fetchBugsByProject, createBug, updateBug } from '../services/api';
 import ContributionCharts from '../components/ContributionCharts';
+import TechStackPanel from '../components/TechStackPanel';
 
 const STATUS_CFG = {
   ACTIVE:           { label: 'Active',          color: '#2ecc71', bg: 'rgba(46,204,113,0.12)',  icon: <FaCheckCircle /> },
@@ -47,26 +51,20 @@ export default function StudentContribution() {
   const [refreshMessage, setRefreshMessage] = useState('');
   const [student] = useState(() => JSON.parse(localStorage.getItem('student') || '{}'));
 
-  const load = () => {
+  const load = useCallback(() => {
     if (!student.usn) { setLoading(false); return; }
     fetchStudentDashboard(student.usn)
       .then(d => {
         setData(d);
         if (d?.project?.id) {
           fetchBugsByProject(d.project.id).then(b => setBugs(b || [])).catch(() => {});
-          if (!d.contribution || d.contribution.score === 0 || !d.contribution.totalCommits) {
-            setAnalyzing(true);
-            analyzeContributions(d.project.id)
-              .then(() => fetchStudentDashboard(student.usn))
-              .then(refreshed => setData(refreshed))
-              .catch(() => {})
-              .finally(() => setAnalyzing(false));
-          }
         }
       }).catch(() => setData(null)).finally(() => setLoading(false));
-  };
+  }, [student.usn]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
+
+  useAnalysisUpdates(data?.project?.id, load);
 
   const handleRefresh = async () => {
     if (!data?.project?.id) return;
@@ -103,21 +101,10 @@ export default function StudentContribution() {
   const totalCommits = contribution?.totalCommits || 0;
   const linesAdded   = contribution?.linesAdded || 0;
   const linesDeleted = contribution?.linesDeleted || 0;
-  const activeDays   = contribution?.activeDays || 1;
+  const activeDays   = contribution?.activeDays || 0;
 
-  // UNIFIED ABSOLUTE SCORE — matches Python WeightedContributionScorer
-  // Targets: 5 commits (30pts), 500 lines (20pts), 3 active days (20pts), 5 functions est (15pts)
-  function calcAbsoluteScore(commits, additions, activeDays) {
-    const commitScore      = Math.min(1, commits / 5) * 30;
-    const linesScore       = Math.min(1, additions / 500) * 20;
-    const consistencyScore = Math.min(1, activeDays / 3) * 20;
-    const estFunctions     = Math.max(1, additions / 30);
-    const qualityScore     = Math.min(1, estFunctions / 5) * 15;
-    return Math.min(100, Math.round(commitScore + linesScore + consistencyScore + qualityScore));
-  }
+  const gitScore = rawScore;
 
-  const gitScore = rawScore > 0 ? rawScore : (totalCommits > 0 ? calcAbsoluteScore(totalCommits, linesAdded, activeDays) : 0);
-  
   const pres = contribution?.presentationScore;
   const rep = contribution?.reportScore;
   const doc = contribution?.documentationScore;
@@ -140,10 +127,7 @@ export default function StudentContribution() {
 
   const marksPublished = project?.marksPublished === true || contribution?.marksPublished === true;
 
-  const isActuallyActive = totalCommits > 0 || score > 0;
-  const st = isActuallyActive
-    ? STATUS_CFG.ACTIVE
-    : (STATUS_CFG[contribution?.status] || STATUS_CFG.NOT_CONTRIBUTING);
+  const st = STATUS_CFG[contribution?.status] || STATUS_CFG.NOT_CONTRIBUTING;
 
   const statCards = contribution ? [
     { icon: <FaGithub />,     label: 'Total Commits',  value: totalCommits, color: '#6675ff' },
@@ -159,28 +143,32 @@ export default function StudentContribution() {
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: C.muted }}>Loading contributions...</div>
       ) : !contribution ? (
-        <div className="s-empty" style={{ marginTop: 60 }}>
-          <div className="s-empty-icon"><FaGithub /></div>
-          <p>No contribution data yet</p>
-          <span>Your teacher will run the GitHub analysis soon.</span>
-          {data?.project?.id && (
-            <button onClick={handleRefresh} disabled={analyzing}
-              style={{ marginTop: 16, padding: '9px 20px', borderRadius: 10, background: 'linear-gradient(135deg,#6675ff,#8b9aff)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, opacity: analyzing ? 0.7 : 1 }}>
-              {analyzing ? 'Analyzing...' : 'Run Analysis Now'}
-            </button>
-          )}
-        </div>
+        <>
+          <TechStackPanel project={project} />
+          <div className="s-empty" style={{ marginTop: 60 }}>
+            <div className="s-empty-icon"><FaGithub /></div>
+            <p>No contribution data yet</p>
+            <span>Your teacher will run the GitHub analysis soon.</span>
+            {data?.project?.id && (
+              <button onClick={handleRefresh} disabled={analyzing}
+                style={{ marginTop: 16, padding: '9px 20px', borderRadius: 10, background: 'linear-gradient(135deg,#6675ff,#8b9aff)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, opacity: analyzing ? 0.7 : 1 }}>
+                {analyzing ? 'Analyzing...' : 'Refresh data'}
+              </button>
+            )}
+          </div>
+        </>
       ) : (
         <>
-          {!isActuallyActive && (
+          <TechStackPanel project={project} />
+          {contribution.status !== 'ACTIVE' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderRadius: 16, background: `${st.color}18`, border: `1px solid ${st.color}44`, marginBottom: 20, fontSize: 14 }}>
               <span style={{ color: st.color, fontSize: 18 }}>{st.icon}</span>
               <div>
                 <strong style={{ color: st.color }}>Status: {st.label}</strong>
                 <p style={{ margin: '4px 0 0', color: C.muted, fontSize: 13 }}>
-                  {contribution.status === 'AT_RISK' && 'You have not committed in 7+ days. Please push your work to avoid being marked inactive.'}
-                  {contribution.status === 'INACTIVE' && 'You have not committed in 14+ days. Your teacher has been notified.'}
-                  {contribution.status === 'NOT_CONTRIBUTING' && 'No commits found. Make sure your GitHub username is correct in your profile.'}
+                  {contribution.status === 'AT_RISK' && 'Your last recorded GitHub activity was over seven days ago.'}
+                  {contribution.status === 'INACTIVE' && 'Your last recorded GitHub activity was over fourteen days ago.'}
+                  {contribution.status === 'NOT_CONTRIBUTING' && 'No activity matched your GitHub identity.'}
                 </p>
               </div>
             </div>
@@ -236,6 +224,7 @@ export default function StudentContribution() {
             </div>
           </div>
 
+          <RepositoryEvidence project={project} scores={[contribution]} usn={student.usn} revision={data} />
           <div className="s-stats">
             {statCards.map(s => (
               <div className="s-stat" key={s.label}>
@@ -249,22 +238,8 @@ export default function StudentContribution() {
           <div className="s-grid-2">
             <div className="s-card">
               <div className="s-card-head"><FaChartBar /> Score Breakdown</div>
-              {[
-                { label: 'Commit Consistency',  value: Math.min(30, Math.min(1, totalCommits / 5) * 30), color: '#6675ff' },
-                { label: 'Lines Added Volume',  value: Math.min(20, Math.min(1, linesAdded / 500) * 20), color: '#2ecc71' },
-                { label: 'Active Days',         value: Math.min(20, Math.min(1, activeDays / 3) * 20), color: '#f39c12' },
-                { label: 'Code Quality (Est.)', value: Math.min(15, Math.min(1, Math.max(1, linesAdded / 30) / 5) * 15), color: '#8c4fff' },
-                { label: 'Bug Fixes',           value: Math.min(15, Math.min(1, (contribution.issuesClosed || 0) / 1) * 15), color: '#1abc9c' },
-              ].map(r => (
-                <div key={r.label} style={{ marginBottom: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6, color: C.text }}>
-                    <span style={{ color: C.muted }}>{r.label}</span>
-                    <strong style={{ color: r.color }}>{Math.round(r.value)} / {r.label === 'Commit Consistency' ? 30 : r.label === 'Active Days' || r.label === 'Lines Added Volume' ? 20 : 15}</strong>
-                  </div>
-                  <div className="s-bar-bg"><div className="s-bar-fill" style={{ width: `${(r.value / (r.label === 'Commit Consistency' ? 30 : r.label === 'Active Days' || r.label === 'Lines Added Volume' ? 20 : 15)) * 100}%`, background: r.color }} /></div>
-                </div>
-              ))}
-              
+              <ScoreBreakdown contribution={contribution} />
+
               {contribution.aiRisk > 0 && (
                 <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 12, background: 'rgba(224,92,92,0.08)', border: '1px solid rgba(224,92,92,0.2)', fontSize: 13, color: C.text }}>
                   <strong style={{ color: '#e05c5c' }}>⚠️ AI Generation Risk:</strong>
@@ -319,8 +294,111 @@ export default function StudentContribution() {
               totalCommits: contribution.totalCommits || 0,
               linesAdded: contribution.linesAdded || 0,
               linesDeleted: contribution.linesDeleted || 0,
-              activeDays: contribution.activeDays || 1,
+              activeDays: contribution.activeDays || 0,
+              codeShare: contribution.codeShare,
             }]} />
+          </div>
+
+          {/* ── COMMIT ANALYSIS TABLE ── */}
+          <div style={{ marginTop: 28 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: C.text }}>🔍 Commit Analysis</h3>
+            <div className="s-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+                  <thead>
+                    <tr style={{ background: 'linear-gradient(90deg,#6675ff,#8c4fff)' }}>
+                      {['Metric', 'Value', 'Detail'].map(h => (
+                        <th key={h} style={{ padding: '11px 16px', textAlign: 'left', fontSize: 11, color: '#fff', fontWeight: 600 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      {
+                        metric: '🔀 Total Commits',
+                        value: totalCommits,
+                        detail: `You have made ${totalCommits} commit${totalCommits !== 1 ? 's' : ''} to this project`,
+                      },
+                      {
+                        metric: '➕ Lines Added',
+                        value: `+${linesAdded.toLocaleString()}`,
+                        detail: `${totalCommits > 0 ? Math.round(linesAdded / totalCommits) : 0} avg lines added per commit`,
+                        valueColor: '#2ecc71',
+                      },
+                      {
+                        metric: '➖ Lines Deleted',
+                        value: `-${linesDeleted.toLocaleString()}`,
+                        detail: `${totalCommits > 0 ? Math.round(linesDeleted / totalCommits) : 0} avg lines deleted per commit`,
+                        valueColor: '#e05c5c',
+                      },
+                      {
+                        metric: '📊 Net Change',
+                        value: `${(linesAdded - linesDeleted) >= 0 ? '+' : ''}${(linesAdded - linesDeleted).toLocaleString()}`,
+                        detail: `${linesAdded.toLocaleString()} added − ${linesDeleted.toLocaleString()} deleted`,
+                        valueColor: (linesAdded - linesDeleted) >= 0 ? '#2ecc71' : '#e05c5c',
+                      },
+                      {
+                        metric: '📅 Active Days',
+                        value: `${activeDays} day${activeDays !== 1 ? 's' : ''}`,
+                        detail: totalCommits > 0 && activeDays > 0 ? `${(totalCommits / activeDays).toFixed(2)} commits per active day` : 'No activity yet',
+                      },
+                      {
+                        metric: '🔥 Commit Frequency',
+                        value: activeDays > 0 ? `${(totalCommits / activeDays).toFixed(2)}/day` : '0/day',
+                        detail: activeDays > 0 ? `Average across ${activeDays} active days` : 'Start committing to track frequency',
+                        valueColor: '#8c4fff',
+                      },
+                      {
+                        metric: '📌 Last Commit',
+                        value: contribution.lastCommitDate ? new Date(contribution.lastCommitDate).toLocaleDateString() : 'Never',
+                        detail: contribution.lastCommitDate
+                          ? `${Math.floor((Date.now() - new Date(contribution.lastCommitDate)) / 86400000)} days ago`
+                          : 'No commits yet',
+                      },
+                      {
+                        metric: '🔁 Pull Requests',
+                        value: contribution.pullRequests || 0,
+                        detail: `${contribution.pullRequests || 0} PR${(contribution.pullRequests || 0) !== 1 ? 's' : ''} opened by you`,
+                        valueColor: '#3498db',
+                      },
+                      {
+                        metric: '✅ Issues Closed',
+                        value: contribution.issuesClosed || 0,
+                        detail: `${contribution.issuesClosed || 0} issue${(contribution.issuesClosed || 0) !== 1 ? 's' : ''} resolved`,
+                        valueColor: '#1abc9c',
+                      },
+                    ].map((row, i) => (
+                      <tr key={row.metric} style={{ borderBottom: '1px solid var(--border-color)', background: i % 2 === 0 ? 'var(--bg-primary, #fff)' : 'rgba(102,117,255,0.03)' }}>
+                        <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: C.text }}>{row.metric}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 15, fontWeight: 800, color: row.valueColor || C.text }}>{row.value}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: C.muted }}>{row.detail}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Code share bar */}
+              {contribution.codeShare != null && (
+                <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.muted, marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, color: C.text }}>📁 Repository Code Share</span>
+                    <strong style={{ color: '#6675ff' }}>{contribution.codeShare}%</strong>
+                  </div>
+                  <div style={{ height: 8, background: 'var(--border-color)', borderRadius: 999, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${Math.min(contribution.codeShare, 100)}%`,
+                      background: 'linear-gradient(90deg,#6675ff,#8c4fff)',
+                      borderRadius: 999,
+                      transition: 'width 0.8s ease',
+                    }} />
+                  </div>
+                  <p style={{ fontSize: 11, color: C.muted, margin: '6px 0 0' }}>
+                    You own {contribution.codeShare}% of total line changes in the repository.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}

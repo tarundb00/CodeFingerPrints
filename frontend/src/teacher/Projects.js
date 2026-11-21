@@ -146,7 +146,7 @@ export default function Projects() {
     try {
       const configs = await fetchGithubConfigs();
       const activeConfig = Array.isArray(configs) ? configs.find(cfg => cfg?.status === 'active') : null;
-      if (!activeConfig || !activeConfig.personalAccessToken) {
+      if (!activeConfig || !activeConfig.tokenConfigured) {
         throw new Error('GitHub is not configured yet. Ask the admin to complete GitHub Settings.');
       }
       if (!project.githubRepoName) {
