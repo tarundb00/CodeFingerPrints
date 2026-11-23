@@ -30,7 +30,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-export default function ContributionCharts({ scores }) {
+export default function ContributionCharts({ scores, animated = true }) {
   if (!scores || scores.length === 0) {
     return <div style={{ textAlign: 'center', padding: 40, opacity: 0.5, color: 'var(--text-muted)' }}>No data to display charts.</div>;
   }
@@ -71,7 +71,7 @@ export default function ContributionCharts({ scores }) {
           <div style={chartTitle}>🥧 Contribution Share (by Score)</div>
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, value }) => `${name}: ${value}`} labelLine={false}>
+              <Pie data={pieData} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, value }) => `${name}: ${value}`} labelLine={false} isAnimationActive={animated}>
                 {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Pie>
               <Tooltip content={<CustomTooltip />} />
@@ -90,8 +90,8 @@ export default function ContributionCharts({ scores }) {
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
               <Tooltip content={<CustomTooltip />} />
               <Legend wrapperStyle={{ fontSize: 12, color: 'var(--text-secondary)' }} />
-              <Bar dataKey="Additions" fill="#2ecc71" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Deletions" fill="#e05c5c" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Additions" fill="#2ecc71" radius={[4, 4, 0, 0]} isAnimationActive={animated} />
+              <Bar dataKey="Deletions" fill="#e05c5c" radius={[4, 4, 0, 0]} isAnimationActive={animated} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -112,6 +112,7 @@ export default function ContributionCharts({ scores }) {
                   stroke={COLORS[i % COLORS.length]}
                   fill={COLORS[i % COLORS.length]}
                   fillOpacity={0.15}
+                  isAnimationActive={animated}
                 />
               ))}
               <Tooltip content={<CustomTooltip />} />
@@ -133,7 +134,7 @@ export default function ContributionCharts({ scores }) {
               <XAxis type="number" domain={[0, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
               <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={70} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="Score" radius={[0, 6, 6, 0]}>
+              <Bar dataKey="Score" radius={[0, 6, 6, 0]} isAnimationActive={animated}>
                 {scores.slice().sort((a, b) => (b.score || 0) - (a.score || 0)).map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}

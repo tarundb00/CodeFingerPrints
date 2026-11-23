@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 import TeacherLayout from './TeacherLayout';
+import ContributionCharts from '../components/ContributionCharts';
 import {
   fetchProjects,
   fetchContributions,
@@ -53,6 +55,7 @@ export default function TeacherReport() {
   const [error, setError] = useState('');
 
   const reqRef = useRef(0);
+  const chartsRef = useRef(null);
 
   const loadProjectData = useCallback(async (project) => {
     if (!project) return;
@@ -119,6 +122,21 @@ export default function TeacherReport() {
     if (!selectedProject) return;
     setGenerating(true);
     try {
+      const chartsCanvas = contributions.length > 0 && chartsRef.current
+        ? await html2canvas(chartsRef.current, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: 1100,
+          onclone: clonedDocument => {
+            const chartElement = clonedDocument.getElementById('teacher-report-contribution-charts');
+            if (chartElement) {
+              chartElement.style.opacity = '1';
+              chartElement.style.zIndex = '9999';
+            }
+          },
+        })
+        : null;
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageW = doc.internal.pageSize.getWidth();
       const pageH = doc.internal.pageSize.getHeight();
@@ -301,8 +319,32 @@ export default function TeacherReport() {
         y += 12;
       }
 
-      // ── DETAILED STUDENT ANALYSIS ──
-      checkPage(20);
+      // ── CONTRIBUTION CHARTS ──
+      doc.addPage();
+      y = margin;
+      sectionHeader('CONTRIBUTION CHARTS', [52, 152, 219]);
+
+      if (chartsCanvas) {
+        const chartImage = chartsCanvas.toDataURL('image/png');
+        const availableWidth = pageW - margin * 2;
+        const availableHeight = pageH - y - margin - 16;
+        const scale = Math.min(
+          availableWidth / chartsCanvas.width,
+          availableHeight / chartsCanvas.height
+        );
+        const imageWidth = chartsCanvas.width * scale;
+        const imageHeight = chartsCanvas.height * scale;
+        doc.addImage(chartImage, 'PNG', (pageW - imageWidth) / 2, y, imageWidth, imageHeight);
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(100, 100, 120);
+        doc.text('No contribution data is available to chart.', margin, y);
+        y += 12;
+      }
+
+      doc.addPage();
+      y = margin;
       sectionHeader('INDIVIDUAL STUDENT ANALYSIS', [80, 50, 160]);
 
       const sorted = [...contributions].sort((a, b) => number(b.score) - number(a.score));
@@ -729,7 +771,7 @@ export default function TeacherReport() {
             <div>
               <h3 style={{ margin: '0 0 6px', fontSize: 16, color: '#1e293b' }}>📄 Ready to generate your report?</h3>
               <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
-                The PDF includes project overview, individual student analysis, commit data, bug tracker, meetings, and score distributions.
+                The PDF includes project overview, student analysis, the contribution charts, bug tracker, and meetings.
               </p>
             </div>
             <button
@@ -749,6 +791,23 @@ export default function TeacherReport() {
           </div>
         </>
       )}
+
+      <div
+        id="teacher-report-contribution-charts"
+        ref={chartsRef}
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: 1000,
+          opacity: 0,
+          pointerEvents: 'none',
+          zIndex: -1,
+        }}
+      >
+        <ContributionCharts scores={contributions} animated={false} />
+      </div>
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
